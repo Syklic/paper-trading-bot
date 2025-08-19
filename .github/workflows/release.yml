@@ -5,7 +5,7 @@ name: Build & Release (Installers)
 
 on:
   push:
-    tags: ['v*.*.*']
+    tags: ["v*.*.*"]
   workflow_dispatch:
 
 permissions:
@@ -19,7 +19,7 @@ jobs:
 
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: "3.11"
 
       - name: Install Python deps
         shell: pwsh
@@ -74,20 +74,21 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   build-linux:
-    runs-on: ubuntu-22.04   # pinned; no apt to avoid exit 100
+    runs-on: ubuntu-22.04 # pinned; avoids apt issues
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: "3.11"
 
-      - name: Install Python deps
+      - name: Install Python deps (with constraints)
         run: |
-          python -m pip install --upgrade pip
-          pip install --only-binary=:all: numpy pandas scipy scikit-learn
-          pip install -r requirements.txt
-          pip install pyinstaller==6.6.0
+          python -m pip install --upgrade pip setuptools wheel
+          pip install --only-binary=:all: -r requirements.txt -c ci/constraints-linux.txt
+          pip install pyinstaller==6.6.0 pyinstaller-hooks-contrib
+          echo "---- pip freeze (for debugging) ----"
+          pip freeze | sed -n '1,120p'
 
       - name: Build onefile
         run: |

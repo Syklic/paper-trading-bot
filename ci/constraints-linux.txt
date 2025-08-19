@@ -1,0 +1,6 @@
+# Versions with widely available manylinux wheels for Python 3.11
+numpy<2
+pandas<2.3
+scipy<1.13
+scikit-learn<1.5
+# keep everything else unconstrained; this only applies on Linux in CI
