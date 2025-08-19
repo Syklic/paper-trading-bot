@@ -1,7 +1,7 @@
-#define MyAppName "TradingBot"
+#define MyAppName "PaperBot"
 #define MyAppVersion "1.5.0"
 #define MyAppPublisher "Syklic"
-#define MyAppExeName "TradingBot.exe"
+#define MyAppExeName "PaperBot.exe"
 
 [Setup]
 AppId={{5B27C6C8-90B0-4A8B-8F9D-92E74D2A7D21}}   ; <-- closing brace added
