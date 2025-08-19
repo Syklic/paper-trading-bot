@@ -1,8 +1,11 @@
+# cSpell:ignore pwsh pyinstaller onedir onefile noconsole streamlit plotly yfinance pywebview sklearn scipy
+# cSpell:ignore Inno choco iscc softprops numpy scikit readlink appimagetool AppImage AppDir AppRun hicolor
+
 name: Build & Release (Installers)
 
 on:
   push:
-    tags: ["v*.*.*"]
+    tags: ['v*.*.*']
   workflow_dispatch:
 
 permissions:
@@ -16,7 +19,7 @@ jobs:
 
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: '3.11'
 
       - name: Install Python deps
         shell: pwsh
@@ -36,6 +39,7 @@ jobs:
             --collect-all plotly ^
             --collect-all yfinance ^
             --collect-all pandas ^
+            --collect-all pywebview ^
             --hidden-import sklearn ^
             --hidden-import scipy
           echo Listing dist:
@@ -70,18 +74,17 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   build-linux:
-    runs-on: ubuntu-22.04 # stable for PyInstaller; no apt-get used
+    runs-on: ubuntu-22.04   # pinned; no apt to avoid exit 100
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: '3.11'
 
       - name: Install Python deps
         run: |
           python -m pip install --upgrade pip
-          # Only-binary to avoid compiling heavy libs
           pip install --only-binary=:all: numpy pandas scipy scikit-learn
           pip install -r requirements.txt
           pip install pyinstaller==6.6.0
@@ -96,12 +99,12 @@ jobs:
             --collect-all plotly \
             --collect-all yfinance \
             --collect-all pandas \
+            --collect-all pywebview \
             --hidden-import sklearn \
             --hidden-import scipy
           echo "Listing dist:"
           ls -la dist
 
-      # AppImage is optional; if it fails, we still ship the onefile binary.
       - name: Create AppImage (optional)
         continue-on-error: true
         run: |

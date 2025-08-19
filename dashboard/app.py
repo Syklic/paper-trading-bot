@@ -1,3 +1,4 @@
+# cSpell:ignore Daytrade daytrade addl selectbox autorefresh dtog dvog mtog maxpos intraday
 import os, time, datetime as dt
 import pandas as pd
 import streamlit as st
@@ -75,15 +76,33 @@ with tab_overview:
 
 with tab_live:
     st.subheader("Live Decisions")
-    auto = st.toggle("Auto-refresh", True)
-    level = st.selectbox("Level", ["all","info","debug","warning","error"], index=0)
-    if auto:
-        st.autorefresh(interval=2000, key="live_log_refresh")
-    _,_,_,_,_, met = load_tables()
+
+    # controls
+    auto = st.toggle("Auto-refresh", True, key="live_auto")
+    level = st.selectbox(
+        "Level",
+        ["all", "info", "debug", "warning", "error"],
+        index=0,
+        key="live_level"
+    )
+
+    # load and filter
+    _, _, _, _, _, met = load_tables()
     df = met.copy()
-    if level!="all":
-        df = df[df["level"]==level]
+    if level != "all":
+        df = df[df["level"] == level]
+
+    # render
     st.dataframe(df.head(200), use_container_width=True, height=500)
+
+    # safe auto-refresh compatible with old/new Streamlit
+    if auto:
+        time.sleep(2)  # adjust cadence if you want
+        try:
+            st.rerun()                # Streamlit ≥ 1.30
+        except AttributeError:
+            st.experimental_rerun()   # older Streamlit
+
 
 with tab_settings:
     st.subheader("Controls")
