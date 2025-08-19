@@ -2,7 +2,7 @@ name: Build & Release (Installers)
 
 on:
   push:
-    tags: ["v*.*.*"]
+    tags: ['v*.*.*']
 
 permissions:
   contents: write
@@ -12,9 +12,10 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: '3.11'
 
       - name: Install Python deps
         shell: pwsh
@@ -24,17 +25,17 @@ jobs:
           pip install pyinstaller
 
       - name: Build with PyInstaller
-        shell: pwsh
+        shell: cmd
         run: |
-          pyinstaller gui/launcher.py --name TradingBot --onedir --noconsole `
-            --icon icons/app-icon.ico `
-            --add-data "dashboard;dashboard" `
-            --add-data "src;src" `
-            --collect-all streamlit `
-            --collect-all plotly `
-            --collect-all yfinance `
-            --collect-all pandas `
-            --hidden-import sklearn `
+          pyinstaller gui\launcher.py --name TradingBot --onedir --noconsole ^
+            --icon icons\app-icon.ico ^
+            --add-data "dashboard;dashboard" ^
+            --add-data "src;src" ^
+            --collect-all streamlit ^
+            --collect-all plotly ^
+            --collect-all yfinance ^
+            --collect-all pandas ^
+            --hidden-import sklearn ^
             --hidden-import scipy
 
       - name: Install Inno Setup
@@ -58,18 +59,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
-
-      # Optional runtime deps for GUI on some distros; harmless if missing
-      - name: Install system deps (optional)
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libgtk-3-0 gir1.2-webkit2-4.1 gobject-introspection libgirepository1.0-dev \
-          || sudo apt-get install -y libgtk-3-0 libwebkit2gtk-4.1-0 gobject-introspection libgirepository1.0-dev \
-          || sudo apt-get install -y libgtk-3-0 libwebkit2gtk-4.0-37 gobject-introspection libgirepository1.0-dev \
-          || true
+          python-version: '3.11'
 
       - name: Install Python deps
         run: |
