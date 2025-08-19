@@ -3,6 +3,7 @@ name: Build & Release (Installers)
 on:
   push:
     tags: ["v*.*.*"]
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -22,9 +23,9 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install pyinstaller
+          pip install pyinstaller==6.6.0
 
-      - name: Build with PyInstaller
+      - name: Build with PyInstaller (TradingBot)
         shell: cmd
         run: |
           pyinstaller gui\launcher.py --name TradingBot --onedir --noconsole ^
@@ -37,6 +38,12 @@ jobs:
             --collect-all pandas ^
             --hidden-import sklearn ^
             --hidden-import scipy
+          echo Listing dist:
+          dir dist
+          if not exist dist\TradingBot\TradingBot.exe (
+            echo ERROR: dist\TradingBot\TradingBot.exe not found. Check --name and .iss Source path.
+            exit /b 2
+          )
 
       - name: Install Inno Setup
         shell: pwsh
@@ -45,6 +52,13 @@ jobs:
       - name: Build Installer (Inno Setup)
         shell: pwsh
         run: iscc windows\TradingBot.iss
+
+      - name: Verify installer exists
+        shell: pwsh
+        run: |
+          if (!(Test-Path "windows/TradingBot-Setup.exe")) {
+            Write-Error "windows/TradingBot-Setup.exe not found. Check OutputDir/OutputBaseFilename in .iss."
+          }
 
       - name: Upload Release (Windows)
         uses: softprops/action-gh-release@v2
@@ -56,7 +70,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   build-linux:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04 # stable for PyInstaller; no apt-get used
     steps:
       - uses: actions/checkout@v4
 
@@ -67,8 +81,10 @@ jobs:
       - name: Install Python deps
         run: |
           python -m pip install --upgrade pip
+          # Only-binary to avoid compiling heavy libs
+          pip install --only-binary=:all: numpy pandas scipy scikit-learn
           pip install -r requirements.txt
-          pip install pyinstaller
+          pip install pyinstaller==6.6.0
 
       - name: Build onefile
         run: |
@@ -82,8 +98,12 @@ jobs:
             --collect-all pandas \
             --hidden-import sklearn \
             --hidden-import scipy
+          echo "Listing dist:"
+          ls -la dist
 
-      - name: Create AppImage
+      # AppImage is optional; if it fails, we still ship the onefile binary.
+      - name: Create AppImage (optional)
+        continue-on-error: true
         run: |
           mkdir -p AppDir/usr/bin AppDir/usr/share/applications AppDir/usr/share/icons/hicolor/256x256/apps
           cp -f dist/trading-bot AppDir/usr/bin/trading-bot
@@ -105,7 +125,8 @@ jobs:
           chmod +x AppDir/AppRun
           wget -q https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage -O appimagetool
           chmod +x appimagetool
-          ./appimagetool AppDir TradingBot-x86_64.AppImage
+          ./appimagetool AppDir TradingBot-x86_64.AppImage || true
+          ls -la
 
       - name: Upload Release (Linux)
         uses: softprops/action-gh-release@v2
