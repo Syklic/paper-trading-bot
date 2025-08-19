@@ -4,13 +4,13 @@
 #define MyAppExeName "TradingBot.exe"
 
 [Setup]
-AppId={{5B27C6C8-90B0-4A8B-8F9D-92E74D2A7D21}
+AppId={{5B27C6C8-90B0-4A8B-8F9D-92E74D2A7D21}}   ; <-- closing brace added
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppPublisher={#MyAppPublisher}
 DefaultDirName={pf}\{#MyAppName}
 DefaultGroupName={#MyAppName}
-OutputDir=.
+OutputDir=windows                                ; <-- put installer in windows/ folder
 OutputBaseFilename=TradingBot-Setup
 SetupIconFile=icons\app-icon.ico
 Compression=lzma
@@ -31,3 +31,4 @@ Name: "desktopicon"; Description: "Create a &desktop shortcut"; Flags: unchecked
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "Launch {#MyAppName}"; Flags: nowait postinstall skipifsilent
+
