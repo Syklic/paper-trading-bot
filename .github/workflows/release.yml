@@ -1,0 +1,92 @@
+name: Build & Release (Installers)
+on:
+  push:
+    tags: ['v*.*.*']
+permissions:
+  contents: write
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.11' }
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+      - name: Build with PyInstaller
+        run: |
+          pyinstaller gui\launcher.py --name TradingBot --onedir --noconsole ^
+            --icon icons\app-icon.ico ^
+            --add-data "dashboard;dashboard" ^
+            --add-data "src;src" ^
+            --collect-all streamlit --collect-all plotly --collect-all yfinance --collect-all pandas ^
+            --hidden-import sklearn --hidden-import scipy
+      - name: Install Inno Setup
+        run: choco install innosetup -y
+      - name: Make Installer
+        run: iscc windows\TradingBot.iss
+      - name: Upload Release (Windows)
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            windows/TradingBot-Setup.exe
+            dist/TradingBot/**/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.11' }
+      - name: Install system deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-0 libwebkit2gtk-4.0-37 gobject-introspection libgirepository1.0-dev
+      - name: Install Python deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+      - name: Build onefile
+        run: |
+          pyinstaller gui/launcher.py --onefile --noconsole \
+            --name trading-bot \
+            --add-data "dashboard:dashboard" \
+            --add-data "src:src" \
+            --collect-all streamlit --collect-all plotly --collect-all yfinance --collect-all pandas \
+            --hidden-import sklearn --hidden-import scipy
+      - name: Create AppImage
+        run: |
+          mkdir -p AppDir/usr/bin AppDir/usr/share/applications AppDir/usr/share/icons/hicolor/256x256/apps
+          cp -f dist/trading-bot AppDir/usr/bin/trading-bot
+          cp -f icons/app-icon-256.png AppDir/usr/share/icons/hicolor/256x256/apps/trading-bot.png
+          cat > AppDir/usr/share/applications/trading-bot.desktop <<'EOF'
+          [Desktop Entry]
+          Type=Application
+          Name=Trading Bot
+          Exec=trading-bot
+          Icon=trading-bot
+          Categories=Finance;Utility;
+          Terminal=false
+          EOF
+          cat > AppDir/AppRun <<'EOF'
+          #!/usr/bin/env bash
+          HERE="$(dirname "$(readlink -f "$0")")"
+          exec "$HERE/usr/bin/trading-bot" "$@"
+          EOF
+          chmod +x AppDir/AppRun
+          wget -q https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage -O appimagetool
+          chmod +x appimagetool
+          ./appimagetool AppDir TradingBot-x86_64.AppImage
+      - name: Upload Release (Linux)
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            TradingBot-x86_64.AppImage
+            dist/trading-bot
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
