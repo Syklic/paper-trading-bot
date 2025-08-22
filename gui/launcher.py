@@ -1,191 +1,91 @@
-import os, sys, subprocess, time, signal, webbrowser
-import webview
+import os
+import sys
+import time
+import socket
+import subprocess
+import webbrowser
+from pathlib import Path
 
-ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-PORT = int(os.getenv("STREAMLIT_SERVER_PORT", "8501"))
-STREAMLIT_URL = f"http://127.0.0.1:{PORT}"
 
-AUTO_CHECK = os.getenv("AUTO_CHECK_UPDATES", "true").lower() == "true"
-UPDATE_CHANNEL = os.getenv("UPDATE_CHANNEL", "stable")
-
-class ProcGroup:
-    def __init__(self):
-        self.streamlit = None
-        self.trader = None
-
-    def is_running(self, p):
-        return p is not None and p.poll() is None
-
-    def start_trader(self):
-        if self.is_running(self.trader):
-            return
-        # run as a module so PyInstaller finds imports
-        self.trader = subprocess.Popen(
-            [sys.executable, "-m", "src.paper_trader"], cwd=ROOT
-        )
-
-    def stop_trader(self):
-        if self.is_running(self.trader):
+def _has_free_port(start=8501, end=8999):
+    for port in range(start, end + 1):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             try:
-                if os.name == "nt":
-                    self.trader.terminate()
-                else:
-                    self.trader.send_signal(getattr(signal, "SIGINT", signal.SIGTERM))
-                for _ in range(50):
-                    if not self.is_running(self.trader):
-                        break
-                    time.sleep(0.1)
-            except Exception:
-                pass
-            try:
-                self.trader.kill()
-            except Exception:
-                pass
-        self.trader = None
+                s.bind(("127.0.0.1", port))
+                return port
+            except OSError:
+                continue
+    raise RuntimeError("No free TCP ports found in range 8501-8999")
 
-    def start_streamlit(self):
-        if self.is_running(self.streamlit):
-            return
-        env = os.environ.copy()
-        env.setdefault("STREAMLIT_SERVER_HEADLESS", "true")
-        env.setdefault("STREAMLIT_SERVER_PORT", str(PORT))
-        self.streamlit = subprocess.Popen(
-            [sys.executable, "-m", "streamlit", "run", "dashboard/app.py"],
-            cwd=ROOT,
-            env=env,
-        )
-
-    def stop_streamlit(self):
-        if self.is_running(self.streamlit):
-            try:
-                self.streamlit.terminate()
-                for _ in range(50):
-                    if not self.is_running(self.streamlit):
-                        break
-                    time.sleep(0.1)
-            except Exception:
-                pass
-            try:
-                self.streamlit.kill()
-            except Exception:
-                pass
-        self.streamlit = None
-
-    def stop_all(self):
-        self.stop_trader()
-        self.stop_streamlit()
-
-
-PROCS = ProcGroup()
-
-
-class Api:
-    def start_all(self):
-        PROCS.start_streamlit()
-        PROCS.start_trader()
-        return "started"
-
-    def stop_trader(self):
-        PROCS.stop_trader()
-        return "stopped"
-
-    def stop_all(self):
-        PROCS.stop_all()
-        return "stopped"
-
-    def open_in_browser(self):
-        webbrowser.open_new_tab(STREAMLIT_URL)
-        return "ok"
-
-    def check_updates(self):
-        from src.version import __version__ as cur
-        from src.updater import latest_release, compare_versions, download_and_launch
-
-        tag, name, asset = latest_release(include_prerelease=(UPDATE_CHANNEL == "prerelease"))
-        if not tag:
-            return {"status": "error", "msg": "No releases found."}
-        cmp = compare_versions(tag, cur)
-        if cmp <= 0:
-            return {"status": "ok", "msg": f"Up to date (current {cur}, latest {tag})."}
-        if not asset:
-            return {
-                "status": "warn",
-                "msg": f"Update {tag} available, but no installer asset for this platform.",
-            }
-        path = download_and_launch(asset)
-        return {"status": "launch", "msg": f"Launched installer: {os.path.basename(path)}"}
-
-
-def wait_for_streamlit(timeout_s=40):
-    import socket
-    deadline = time.time() + timeout_s
-    while time.time() < deadline:
-        try:
-            s = socket.create_connection(("127.0.0.1", PORT), 0.2)
-            s.close()
-            return True
-        except Exception:
-            time.sleep(0.2)
-    return False
-
+def _app_path():
+    base = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
+    # Support onedir (files next to exe) and onefile (extracted to MEIPASS)
+    # The repo keeps the dashboard at dashboard/app.py
+    # First try alongside the executable dir
+    p = base / "dashboard" / "app.py"
+    if p.exists():
+        return str(p)
+    # Try when running from source (gui/launcher.py within repo)
+    p2 = Path(__file__).resolve().parents[1] / "dashboard" / "app.py"
+    return str(p2)
 
 def main():
-    api = Api()
-    api.start_all()
-    wait_for_streamlit()
+    app = _app_path()
+    if not os.path.exists(app):
+        raise SystemExit(f"Could not locate dashboard/app.py at: {app}")
 
-    # Overlay shown while the app is starting (safe to use in PyInstaller)
-    overlay = f"""
-    <div id="loading-overlay" style="position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.75);color:#fff;font-family:system-ui,Segoe UI,Arial,sans-serif;z-index:2147483647">
-        <div style="text-align:center;max-width:520px;padding:24px">
-        <div style="font-size:22px;margin-bottom:8px">Starting Paper Trading Bot…</div>
-        <div style="opacity:.85;font-size:13px">Launching services. This can take a moment.</div>
-            <div style="margin-top:16px">
-                <button style="padding:8px 12px;border-radius:10px;border:0;background:#16a34a;color:#fff;cursor:pointer"
-                onclick="(async()=>{{ try {{ const r = await pywebview.api.check_updates(); alert(r.msg); }} catch(e) {{ alert('Update check failed'); }} }})()">
-                Check updates
-                </button>
-            </div>
-        </div>
-    </div>
-<script>
-  // Remove overlay when Streamlit main section appears
-  (function () {{
-    const t = setInterval(() => {{
-      if (document.querySelector('section.main')) {{
-        const el = document.getElementById('loading-overlay');
-        if (el) el.remove();
-        clearInterval(t);
-      }}
-    }}, 800);
-  }})();
-</script>
-"""
+    port = _has_free_port()
+    env = os.environ.copy()
+    env["STREAMLIT_SERVER_PORT"] = str(port)
+    env["STREAMLIT_BROWSER_GATHER_USAGE_STATS"] = "false"
+    env["PYTHONWARNINGS"] = env.get("PYTHONWARNINGS", "ignore")
 
+    # If running under PyInstaller onefile/onedir, sys.executable is our launcher.
+    # Use the embedded python to run streamlit module so it resolves package resources.
+    py = sys.executable
+    cmd = [
+        py, "-m", "streamlit", "run", app,
+        "--server.port", str(port),
+        "--server.headless", "true",
+        "--browser.gatherUsageStats", "false",
+    ]
 
-    window = webview.create_window(
-        "Trading Bot Dashboard", f"http://127.0.0.1:{PORT}", width=1200, height=800
-    )
+    # Start Streamlit server
+    server = subprocess.Popen(cmd, env=env)
 
-    def _inject():
-        # inject overlay
-        webview.windows[0].evaluate_js(
-            f"document.body.insertAdjacentHTML('beforeend', `{overlay}`)"
-        )
-        # optional: auto check updates
-        if AUTO_CHECK:
-            webview.windows[0].evaluate_js("""
-                (async () => {
-                  const r = await pywebview.api.check_updates();
-                  if (r.status === 'launch') { alert(r.msg); }
-                })();
-            """)
+    # Wait for server to come up
+    url = f"http://127.0.0.1:{port}"
+    for _ in range(120):  # ~60s
+        try:
+            with socket.create_connection(("127.0.0.1", port), timeout=0.25):
+                break
+        except OSError:
+            time.sleep(0.5)
+    else:
+        # Failed to start
+        webbrowser.open(url)
+        server.wait()
+        return
 
-    webview.start(func=_inject, api=api, debug=False)
+    # Try to bring up an embedded window via pywebview, if present
+    try:
+        import webview  # pywebview
+        window = webview.create_window("Paper Trading Bot", url=url, width=1220, height=800)
+        webview.start(gui=None)  # let pywebview choose backend
+    except Exception:
+        # Fallback to default browser
+        webbrowser.open(url)
+        try:
+            server.wait()
+        except KeyboardInterrupt:
+            pass
 
+    # Ensure the server is terminated on close
+    try:
+        server.terminate()
+    except Exception:
+        pass
 
 if __name__ == "__main__":
-    try:
-        main()
-    finally:
-        PROCS.stop_all()
+    main()

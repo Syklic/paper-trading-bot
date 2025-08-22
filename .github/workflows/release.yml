@@ -1,11 +1,8 @@
-# cSpell:ignore pwsh pyinstaller onedir onefile noconsole streamlit plotly yfinance pywebview sklearn scipy
-# cSpell:ignore Inno choco iscc softprops numpy scikit readlink appimagetool AppImage AppDir AppRun hicolor
-
-name: Build & Release (Installers)
+name: Release builds
 
 on:
-  push:
-    tags: ["v*.*.*"]
+  release:
+    types: [published]
   workflow_dispatch:
 
 permissions:
@@ -13,7 +10,7 @@ permissions:
 
 jobs:
   build-windows:
-    runs-on: windows-latest
+    runs-on: windows-2022
     steps:
       - uses: actions/checkout@v4
 
@@ -32,49 +29,37 @@ jobs:
         shell: cmd
         run: |
           pyinstaller gui\launcher.py --name TradingBot --onedir --noconsole ^
-            --icon icons\app-icon.ico ^
             --add-data "dashboard;dashboard" ^
             --add-data "src;src" ^
             --collect-all streamlit ^
             --collect-all plotly ^
             --collect-all yfinance ^
             --collect-all pandas ^
-            --collect-all pywebview ^
             --hidden-import sklearn ^
             --hidden-import scipy
+
           echo Listing dist:
           dir dist
           if not exist dist\TradingBot\TradingBot.exe (
-            echo ERROR: dist\TradingBot\TradingBot.exe not found. Check --name and .iss Source path.
+            echo ERROR: dist\TradingBot\TradingBot.exe not found. Check --name and paths.
             exit /b 2
           )
 
-      - name: Install Inno Setup
-        shell: pwsh
-        run: choco install innosetup -y
-
-      - name: Build Installer (Inno Setup)
-        shell: pwsh
-        run: iscc windows\TradingBot.iss
-
-      - name: Verify installer exists
+      - name: Zip artifact
         shell: pwsh
         run: |
-          if (!(Test-Path "windows/TradingBot-Setup.exe")) {
-            Write-Error "windows/TradingBot-Setup.exe not found. Check OutputDir/OutputBaseFilename in .iss."
-          }
+          Compress-Archive -Path "dist\TradingBot\*" -DestinationPath "TradingBot-windows.zip"
 
       - name: Upload Release (Windows)
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            windows/TradingBot-Setup.exe
-            dist/TradingBot/**/*
+            TradingBot-windows.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   build-linux:
-    runs-on: ubuntu-22.04 # pinned; avoids apt issues
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 
@@ -82,61 +67,34 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install Python deps (with constraints)
+      - name: Install Python deps
         run: |
-          python -m pip install --upgrade pip setuptools wheel
-          pip install --only-binary=:all: -r requirements.txt -c ci/constraints-linux.txt
-          pip install pyinstaller==6.6.0 pyinstaller-hooks-contrib
-          echo "---- pip freeze (for debugging) ----"
-          pip freeze | sed -n '1,120p'
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller==6.6.0
 
-      - name: Build onefile
+      - name: Build with PyInstaller (TradingBot)
         run: |
-          pyinstaller gui/launcher.py --onefile --noconsole \
-            --name trading-bot \
+          pyinstaller gui/launcher.py --name TradingBot --onedir --noconsole \
             --add-data "dashboard:dashboard" \
             --add-data "src:src" \
             --collect-all streamlit \
             --collect-all plotly \
             --collect-all yfinance \
             --collect-all pandas \
-            --collect-all pywebview \
             --hidden-import sklearn \
             --hidden-import scipy
-          echo "Listing dist:"
           ls -la dist
+          test -f "dist/TradingBot/TradingBot" || (echo "ERROR: dist/TradingBot/TradingBot not found" && exit 2)
 
-      - name: Create AppImage (optional)
-        continue-on-error: true
+      - name: Tar artifact
         run: |
-          mkdir -p AppDir/usr/bin AppDir/usr/share/applications AppDir/usr/share/icons/hicolor/256x256/apps
-          cp -f dist/trading-bot AppDir/usr/bin/trading-bot
-          cp -f icons/app-icon-256.png AppDir/usr/share/icons/hicolor/256x256/apps/trading-bot.png
-          cat > AppDir/usr/share/applications/trading-bot.desktop <<'EOF'
-          [Desktop Entry]
-          Type=Application
-          Name=Trading Bot
-          Exec=trading-bot
-          Icon=trading-bot
-          Categories=Finance;Utility;
-          Terminal=false
-          EOF
-          cat > AppDir/AppRun <<'EOF'
-          #!/usr/bin/env bash
-          HERE="$(dirname "$(readlink -f "$0")")"
-          exec "$HERE/usr/bin/trading-bot" "$@"
-          EOF
-          chmod +x AppDir/AppRun
-          wget -q https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage -O appimagetool
-          chmod +x appimagetool
-          ./appimagetool AppDir TradingBot-x86_64.AppImage || true
-          ls -la
+          tar -C dist -czf TradingBot-linux.tar.gz TradingBot
 
       - name: Upload Release (Linux)
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            TradingBot-x86_64.AppImage
-            dist/trading-bot
+            TradingBot-linux.tar.gz
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
