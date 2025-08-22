@@ -134,23 +134,34 @@ def main():
     api.start_all()
     wait_for_streamlit()
 
+    # Overlay shown while the app is starting (safe to use in PyInstaller)
     overlay = f"""
-    <style>
-      .overlay {{ position: fixed; top: 10px; right: 10px; z-index: 9999; font-family: system-ui, sans-serif; }}
-      .overlay button {{ margin-left: 6px; padding: 6px 10px; border-radius: 8px; border: 1px solid #ddd; cursor: pointer; }}
-      .overlay .danger {{ background:#b91c1c; color:white; border:none; }}
-      .overlay .ok {{ background:#16a34a; color:white; border:none; }}
-      .overlay .ghost {{ background:white; color:#111; }}
-      .overlay .info {{ background:#0ea5e9; color:white; border:none; }}
-    </style>
-    <div class="overlay">
-      <button class="ok" onclick="pywebview.api.start_all()">Start</button>
-      <button class="ghost" onclick="pywebview.api.open_in_browser()">Open in browser</button>
-      <button class="info" onclick="(async()=>{{ const r = await pywebview.api.check_updates(); alert(r.msg); }})()">Check updates</button>
-      <button class="danger" onclick="pywebview.api.stop_trader()">Stop bot</button>
-      <button class="danger" onclick="pywebview.api.stop_all()">Quit all</button>
+    <div id="loading-overlay" style="position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.75);color:#fff;font-family:system-ui,Segoe UI,Arial,sans-serif;z-index:2147483647">
+        <div style="text-align:center;max-width:520px;padding:24px">
+        <div style="font-size:22px;margin-bottom:8px">Starting Paper Trading Bot…</div>
+        <div style="opacity:.85;font-size:13px">Launching services. This can take a moment.</div>
+            <div style="margin-top:16px">
+                <button style="padding:8px 12px;border-radius:10px;border:0;background:#16a34a;color:#fff;cursor:pointer"
+                onclick="(async()=>{{ try {{ const r = await pywebview.api.check_updates(); alert(r.msg); }} catch(e) {{ alert('Update check failed'); }} }})()">
+                Check updates
+                </button>
+            </div>
+        </div>
     </div>
-    """
+<script>
+  // Remove overlay when Streamlit main section appears
+  (function () {{
+    const t = setInterval(() => {{
+      if (document.querySelector('section.main')) {{
+        const el = document.getElementById('loading-overlay');
+        if (el) el.remove();
+        clearInterval(t);
+      }}
+    }}, 800);
+  }})();
+</script>
+"""
+
 
     window = webview.create_window(
         "Trading Bot Dashboard", f"http://127.0.0.1:{PORT}", width=1200, height=800
