@@ -1,4 +1,4 @@
-import time, datetime as dt, threading, os
+import time, datetime as dt, threading
 from .db import init, log
 from .config import Settings
 from . import strategies
@@ -7,9 +7,11 @@ RUN = True
 
 def loop():
     s = Settings()
-    log("info","scheduler","Starting scheduler (paper-only={})".format(s.strict_paper_only))
+    log("info", "scheduler", f"Starting scheduler (paper-only={s.strict_paper_only})")
     while RUN:
         try:
+            # reload toggles each cycle (in case user changes Settings)
+            s = Settings()
             if s.enable_daytrade:
                 strategies.daytrade_tick()
             if s.enable_dividend_hold and dt.datetime.utcnow().second % 15 == 0:
@@ -18,7 +20,7 @@ def loop():
                 strategies.mimic_politicians_tick()
             time.sleep(2)
         except Exception as e:
-            log("error","scheduler",str(e))
+            log("error", "scheduler", str(e))
             time.sleep(2)
 
 def main():
@@ -31,7 +33,8 @@ def main():
     except KeyboardInterrupt:
         global RUN
         RUN = False
-        log("warning","scheduler","Stop requested")
+        log("warning", "scheduler", "Stop requested")
 
 if __name__ == "__main__":
     main()
+

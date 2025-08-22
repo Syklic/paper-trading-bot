@@ -1,4 +1,4 @@
-import sqlite3, os, time
+import sqlite3, os
 from contextlib import contextmanager
 
 DB_PATH = os.getenv("DB_PATH", "paper.db")
@@ -16,57 +16,74 @@ def get_conn():
 def init():
     with get_conn() as c:
         cur = c.cursor()
-        cur.execute("""CREATE TABLE IF NOT EXISTS equity(
-            ts TEXT PRIMARY KEY,
-            equity REAL
+        # Equity time series (utc iso timestamps)
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS equity(
+            ts TEXT NOT NULL,
+            equity REAL NOT NULL
         )""")
-        cur.execute("""CREATE TABLE IF NOT EXISTS trades(
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            ts TEXT,
-            symbol TEXT,
-            side TEXT,
-            qty REAL,
-            price REAL
+        # Trades requested
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS trades(
+            ts TEXT NOT NULL,
+            symbol TEXT NOT NULL,
+            side TEXT NOT NULL,
+            qty INTEGER NOT NULL,
+            price REAL NOT NULL
         )""")
-        cur.execute("""CREATE TABLE IF NOT EXISTS fills(
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            ts TEXT,
-            symbol TEXT,
-            side TEXT,
-            qty REAL,
-            price REAL,
-            commission REAL DEFAULT 0.0
+        # Immediate fills (paper)
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS fills(
+            ts TEXT NOT NULL,
+            symbol TEXT NOT NULL,
+            side TEXT NOT NULL,
+            qty INTEGER NOT NULL,
+            price REAL NOT NULL
         )""")
-        cur.execute("""CREATE TABLE IF NOT EXISTS positions(
+        # Open positions
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS positions(
             symbol TEXT PRIMARY KEY,
-            qty REAL,
-            avg_price REAL
+            qty INTEGER NOT NULL,
+            avg_price REAL NOT NULL
         )""")
-        cur.execute("""CREATE TABLE IF NOT EXISTS bot_log(
-            ts TEXT,
-            level TEXT,
-            source TEXT,
-            message TEXT
+        # Bot log (audit/rails/metrics)
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS bot_log(
+            ts TEXT NOT NULL,
+            level TEXT NOT NULL,
+            source TEXT NOT NULL,
+            message TEXT NOT NULL
         )""")
-        cur.execute("""CREATE TABLE IF NOT EXISTS settings(
+        # Settings KV
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS settings(
             key TEXT PRIMARY KEY,
-            value TEXT
+            value TEXT NOT NULL
         )""")
 
 def log(level, source, message):
     import datetime as dt
     with get_conn() as c:
-        c.execute("INSERT INTO bot_log(ts,level,source,message) VALUES(?,?,?,?)",
-                  (dt.datetime.utcnow().isoformat(), level, source, message))
+        c.execute(
+            "INSERT INTO bot_log(ts,level,source,message) VALUES(?,?,?,?)",
+            (dt.datetime.utcnow().isoformat(), level, source, message),
+        )
 
 def set_many(pairs: dict):
     with get_conn() as c:
-        for k,v in pairs.items():
-            c.execute("INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (k, str(v)))
+        for k, v in pairs.items():
+            c.execute(
+                """
+                INSERT INTO settings(key,value) VALUES(?,?)
+                ON CONFLICT(key) DO UPDATE SET value=excluded.value
+                """,
+                (k, str(v)),
+            )
 
 def get_all_settings():
     with get_conn() as c:
-        return {row[0]: row[1] for row in c.execute("SELECT key,value FROM settings")}
+        return {row["key"]: row["value"] for row in c.execute("SELECT key,value FROM settings")}
 
 if __name__ == "__main__":
     init()

@@ -83,7 +83,7 @@ with tab_live:
         "Level",
         ["all", "info", "debug", "warning", "error"],
         index=0,
-        key="live_level"
+        key="live_level",
     )
 
     # load and filter
@@ -97,11 +97,12 @@ with tab_live:
 
     # safe auto-refresh compatible with old/new Streamlit
     if auto:
-        time.sleep(2)  # adjust cadence if you want
+        time.sleep(2)
         try:
             st.rerun()                # Streamlit ≥ 1.30
         except AttributeError:
             st.experimental_rerun()   # older Streamlit
+   # older Streamlit
 
 
 with tab_settings:

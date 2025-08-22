@@ -1,37 +1,71 @@
-import random, datetime as dt
+import datetime as dt
 from ..db import get_conn, log
 
-def get_cash_equity():
-    with get_conn() as c:
-        # approximate equity from starting 100k + PnL
-        rows = list(c.execute("SELECT equity FROM equity ORDER BY ts DESC LIMIT 1"))
-        if rows:
-            return rows[0][0]
-        return 100000.0
+START_EQUITY = 100_000.0
 
-def place_order(symbol, side, qty, price):
+def _last_equity(c):
+    row = c.execute("SELECT equity FROM equity ORDER BY ts DESC LIMIT 1").fetchone()
+    return float(row[0]) if row else START_EQUITY
+
+def place_order(symbol: str, side: str, qty: int, price: float):
+    side = side.upper()
+    assert side in ("BUY", "SELL"), "side must be BUY or SELL"
+    assert qty > 0 and price > 0, "qty/price must be positive"
+
     ts = dt.datetime.utcnow().isoformat()
+    notional = qty * float(price)
+
     with get_conn() as c:
-        c.execute("INSERT INTO trades(ts,symbol,side,qty,price) VALUES(?,?,?,?,?)", (ts, symbol, side, qty, price))
-        # naive: immediate fill at same price
-        c.execute("INSERT INTO fills(ts,symbol,side,qty,price,commission) VALUES(?,?,?,?,?,?)", (ts, symbol, side, qty, price, 0.0))
-        # update position
-        # simple avg price calc
-        row = c.execute("SELECT qty, avg_price FROM positions WHERE symbol=?", (symbol,)).fetchone()
-        if side.upper() == "BUY":
+        # record desired trade
+        c.execute(
+            "INSERT INTO trades(ts,symbol,side,qty,price) VALUES(?,?,?,?,?)",
+            (ts, symbol, side, qty, price),
+        )
+        # paper: immediate fill
+        c.execute(
+            "INSERT INTO fills(ts,symbol,side,qty,price) VALUES(?,?,?,?,?)",
+            (ts, symbol, side, qty, price),
+        )
+
+        # positions
+        row = c.execute(
+            "SELECT qty, avg_price FROM positions WHERE symbol=?", (symbol,)
+        ).fetchone()
+
+        if side == "BUY":
             if row:
-                oq, ap = row
+                oq, ap = int(row[0]), float(row[1])
                 new_qty = oq + qty
-                new_ap = (oq*ap + qty*price)/new_qty
-                c.execute("UPDATE positions SET qty=?, avg_price=? WHERE symbol=?", (new_qty, new_ap, symbol))
+                new_ap = (oq * ap + qty * price) / new_qty
+                c.execute(
+                    "UPDATE positions SET qty=?, avg_price=? WHERE symbol=?",
+                    (new_qty, new_ap, symbol),
+                )
             else:
-                c.execute("INSERT INTO positions(symbol,qty,avg_price) VALUES(?,?,?)", (symbol, qty, price))
-        else:
+                c.execute(
+                    "INSERT INTO positions(symbol,qty,avg_price) VALUES(?,?,?)",
+                    (symbol, qty, price),
+                )
+        else:  # SELL
             if row:
-                oq, ap = row
+                oq, ap = int(row[0]), float(row[1])
                 new_qty = oq - qty
                 if new_qty <= 0:
                     c.execute("DELETE FROM positions WHERE symbol=?", (symbol,))
                 else:
-                    c.execute("UPDATE positions SET qty=? WHERE symbol=?", (new_qty, symbol))
-    log("info","broker","Filled {} {} {} @ {}".format(side, qty, symbol, price))
+                    # avg_price unchanged on partial sell
+                    c.execute(
+                        "UPDATE positions SET qty=? WHERE symbol=?",
+                        (new_qty, symbol),
+                    )
+
+        # equity update (simple cash-based model)
+        eq0 = _last_equity(c)
+        eq1 = eq0 - notional if side == "BUY" else eq0 + notional
+        c.execute(
+            "INSERT INTO equity(ts,equity) VALUES(?,?)",
+            (ts, float(eq1)),
+        )
+
+    log("info", "broker", f"Filled {side} {qty} {symbol} @ {price}")
+
